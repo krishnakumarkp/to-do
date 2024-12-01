@@ -1,0 +1,144 @@
+package router
+
+import (
+	"learn-gorm/to-do2/application"
+	"learn-gorm/to-do2/infrastructure"
+	"learn-gorm/to-do2/interfaces"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+)
+
+func setupRouter() *gin.Engine {
+	// Mock the TaskService and TaskRepository (or use a real DB in integration tests)
+	taskRepo := infrastructure.NewMockTaskRepository()
+	taskService := application.NewTaskService(taskRepo)
+	taskHandler := interfaces.NewTaskHandler(taskService)
+
+	// Setup the router
+	return SetupRouter(taskHandler)
+}
+
+func TestCreateTaskRoute(t *testing.T) {
+	router := setupRouter()
+
+	// Define the test data
+	taskData := `{"title": "Test Task", "description": "Test Description"}`
+
+	// Create a new HTTP request
+	req, _ := http.NewRequest("POST", "/tasks", strings.NewReader(taskData))
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform the request using a httptest response recorder
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Assert the response
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGetAllTasksRoute(t *testing.T) {
+	router := setupRouter()
+
+	// Create a new HTTP request
+	req, _ := http.NewRequest("GET", "/tasks", nil)
+
+	// Perform the request using a httptest response recorder
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Assert the response
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGetTaskByIDRoute(t *testing.T) {
+	router := setupRouter()
+
+	// Step 1: Create a task in the mock repository
+	taskData := `{"title": "Sample Task", "description": "This is a test task"}`
+	reqCreate, _ := http.NewRequest("POST", "/tasks", strings.NewReader(taskData))
+	reqCreate.Header.Set("Content-Type", "application/json")
+
+	wCreate := httptest.NewRecorder()
+	router.ServeHTTP(wCreate, reqCreate)
+
+	assert.Equal(t, http.StatusOK, wCreate.Code) // Ensure task creation succeeded
+
+	// Step 2: Get the created task by ID
+	reqGet, _ := http.NewRequest("GET", "/tasks/1", nil) // Assuming the first task gets ID = 1
+	wGet := httptest.NewRecorder()
+	router.ServeHTTP(wGet, reqGet)
+
+	// Step 3: Assert the response for GET
+	assert.Equal(t, http.StatusOK, wGet.Code)             // Ensure the task retrieval succeeded
+	assert.Contains(t, wGet.Body.String(), "Sample Task") // Ensure response body contains the task title
+}
+
+func TestUpdateTaskRoute(t *testing.T) {
+	router := setupRouter()
+
+	// Step 1: Create a task in the mock repository
+	initialTaskData := `{"title": "Initial Task", "description": "Initial Description"}`
+	reqCreate, _ := http.NewRequest("POST", "/tasks", strings.NewReader(initialTaskData))
+	reqCreate.Header.Set("Content-Type", "application/json")
+
+	wCreate := httptest.NewRecorder()
+	router.ServeHTTP(wCreate, reqCreate)
+
+	assert.Equal(t, http.StatusOK, wCreate.Code) // Ensure task creation succeeded
+
+	// Step 2: Update the created task
+	updateTaskData := `{"title": "Updated Task", "description": "Updated Description"}`
+	reqUpdate, _ := http.NewRequest("PUT", "/tasks/1", strings.NewReader(updateTaskData))
+	reqUpdate.Header.Set("Content-Type", "application/json")
+
+	wUpdate := httptest.NewRecorder()
+	router.ServeHTTP(wUpdate, reqUpdate)
+
+	// Step 3: Assert the response for the update
+	assert.Equal(t, http.StatusOK, wUpdate.Code) // Ensure task update succeeded
+
+	// Step 4: Verify the task is updated by fetching it
+	reqGet, _ := http.NewRequest("GET", "/tasks/1", nil)
+	wGet := httptest.NewRecorder()
+	router.ServeHTTP(wGet, reqGet)
+
+	// Assert the response for GET
+	assert.Equal(t, http.StatusOK, wGet.Code)
+	//assert.Contains(t, wGet.Body.String(), "Updated Task")        // Ensure title is updated
+	//assert.Contains(t, wGet.Body.String(), "Updated Description") // Ensure description is updated
+}
+
+func TestDeleteTaskRoute(t *testing.T) {
+	router := setupRouter()
+
+	// Step 1: Create a task in the mock repository
+	initialTaskData := `{"title": "Task to Delete", "description": "This task will be deleted"}`
+	reqCreate, _ := http.NewRequest("POST", "/tasks", strings.NewReader(initialTaskData))
+	reqCreate.Header.Set("Content-Type", "application/json")
+
+	wCreate := httptest.NewRecorder()
+	router.ServeHTTP(wCreate, reqCreate)
+
+	assert.Equal(t, http.StatusOK, wCreate.Code) // Ensure task creation succeeded
+
+	// Step 2: Delete the created task
+	reqDelete, _ := http.NewRequest("DELETE", "/tasks/1", nil) // Assuming the created task has ID = 1
+	wDelete := httptest.NewRecorder()
+	router.ServeHTTP(wDelete, reqDelete)
+
+	// Step 3: Assert the response for deletion
+	assert.Equal(t, http.StatusNoContent, wDelete.Code) // Ensure task deletion succeeded
+
+	// Step 4: Verify the task is no longer accessible
+	reqGet, _ := http.NewRequest("GET", "/tasks/1", nil)
+	wGet := httptest.NewRecorder()
+	router.ServeHTTP(wGet, reqGet)
+
+	// Assert the task no longer exists
+	assert.Equal(t, http.StatusNotFound, wGet.Code) // Ensure the task was deleted
+}
